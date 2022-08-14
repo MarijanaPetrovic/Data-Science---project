@@ -1,0 +1,538 @@
+---
+output:
+  html_document: default
+  word_document: default
+  pdf_document: default
+---
+Скуп података под називом  „ Used cars catalog“, који ћемо представити у семинарском раду, представља колекцију података о половним аутомобилима узетих са више интернет сајтова у Белорусији у децембру 2019. године.
+
+База података
+
+База података се састоји од једног .csv фајла
+
+Учитаћемо библиотеке неопходне за даљи рад.
+
+```{r}
+library(tidyverse)
+library(ISLR)
+library(visdat)
+library(car)
+library(leaps)
+
+```
+Учитавање скупа података из .csv фајла.
+
+```{r}
+
+carsDataSet = read.csv("cars.csv", stringsAsFactors = F)
+```
+
+Пре даљег рада издвојићемо само колоне које су нам потребне, док ћемо колоне које нам представљају проблем, због превише нејасноћа, отклонити из скупа.
+
+```{r}
+carSubset = subset(carsDataSet,select= c("manufacturer_name","transmission","color","odometer_value","year_produced","engine_fuel","engine_has_gas","engine_type",
+                                         "engine_capacity","body_type","has_warranty","state","drivetrain","price_usd","is_exchangeable","number_of_photos","duration_listed"))
+
+
+
+```
+Погледаћемо детаљније скуп података који ћемо обрађивати.\
+Описаћемо само променљиве које ћемо користити у даљој анализи скупа carSubset.\
+manufacturer_name: Произвођач аутомобила (Категоријска променљива)\
+transmission: Тип мењача аутомобила (Категоријска променљива)\
+color: Боја аутомобила (Категоријска променљива)\
+odometer_value: Пређена километража (Нумеричка променљива)\
+year_produced: Година производње (Нумеричка променљива)\
+engine_fuel: Тип горива мотора (Категоријска променљива)\
+engine_has_gas: Да ли аутомобил има уграђен гас (Логичка променљива)\
+engine_type: Тип мотора (Категоријска променљива)\
+engine_capacity: Запремина мотора (Нумеричка променљива)\
+body_type: Тип каросерије (Категоријска променљива)\
+has_warranty: Да ли возило има гаранцију (Логичка променљива)\
+state: Стање возила. Описује да ли је возило ново, половно или оштећено (Категоријска променљива)\
+drivetrain: Тип погона возила - Предњи, задњи или сва четири точка. (Категоријска променљива)\
+is_exchangeable: Да ли је могућа замена (Логичка променљива)\
+number_of_photos: Број фотографија возила на огласу. (Нумеричка променљива)\
+duration_listed: Број дана колико је оглас приказан на сајту (Нумеричка променљива) \
+
+Циљна променљива: price_usd: Цена возила у америчким доларима. (Нумеричка променљива)
+
+```{r}
+str(carSubset)
+```
+На основу приказа структуре скупа података, можемо закључити да имамо три различита типа података, нумеричке, логичке и карактер променљиве. 
+
+
+```{r}
+summary(carSubset)
+```
+Извршавањем функције summary добијамо детаљније информације о нашем скупу, као што су минимум и максмум, медијана, средња вредност као и да ли скуп садржи недостајуће вредности. У нашем случају NA вредности налазе се само у колони о кубикажи мотора.
+Детаљнијом провером колона, закључили смо да код стринг вредности немамо недостајуће вредности попут празног стринга, цртице или томе слично.
+
+```{r}
+carSubset$model_name[carSubset$model_name == ""]
+carSubset$model_name[carSubset$model_name == "-"]
+```
+Поступак је поновљен за све колоне карактер типа.
+
+Недостајуће вредности
+
+```{r}
+carSubset$year_produced[carSubset$year_produced  < 1970 ] <- NA
+
+```
+
+Због мањег интересовања купаца за возила старија од 50 година, одлучили смо да уместо тих возила поставимо недостајуће вредности.
+Сва возила произведена пре 1970. године добиће Na вредност.
+
+```{r}
+vis_miss(carSubset)
+```
+
+На графичком приказу недостајућих вредности скупа података, можемо видети да је тај број веома мали чак мањи од 0.1%.
+
+Обрада недостајућих вредности
+```{r}
+summary(carSubset)
+```
+
+
+
+С обзиром да имамо NA вредности у колони engine_capacitу, а како је она континуална променљива те вредности попунићемо медијаном те колоне.
+
+```{r}
+med = median(carSubset$engine_capacity, na.rm=TRUE)
+print(med)
+```
+
+
+```{r}
+carSubset %>% group_by(engine_capacity) %>% count(engine_capacity, sort= TRUE)
+```
+
+Из приложеног видимо да је медијана 2.0, али и да је та вредност најзаступљенија у колони и том вредношћу попуњавамо NA вредности.
+
+```{r}
+
+carSubset$engine_capacity[is.na(carSubset$engine_capacity)] <- med
+```
+
+```{r}
+summary(carSubset)
+```
+Из приложеног видимо да у колони engine_capacity више немамо недостајућих вредности.
+
+Како нам не би представљале проблем у даљем раду, обрисаћемо врсте са недостајућим вредностима у колони year_produced.
+```{r}
+carSubset <- na.omit(carSubset)
+```
+
+
+
+
+Визуелизација и анализа података
+
+
+```{r}
+plot(carSubset$price_usd) 
+```
+Са графика видимо да цене у великој мери варирају, зато ћемо додати нову категоријску променљиву чије су категорије формиране на основу висине цене.
+Категорије су формиране на основу података прикупљених са сајта "Половни аутомобили".
+
+```{r}
+extraLowPrice <- carSubset$price_usd[carSubset$price_usd <= 1000]
+lowPrice <- carSubset$price_usd[carSubset$price_usd > 1000 & carSubset$price_usd <= 4000 ]
+medPrice <- carSubset$price_usd[carSubset$price_usd > 4000 & carSubset$price_usd <= 10000]
+highPrice <- carSubset$price_usd[carSubset$price_usd > 10000 & carSubset$price_usd <= 30000]
+extraPrice <- carSubset$price_usd[carSubset$price_usd > 30000]
+
+carSubset$price_cat <- vector(mode = "character", length = nrow(carSubset))
+carSubset$price_cat[carSubset$price_usd %in% extraLowPrice ] <- "extraLowPrice"
+carSubset$price_cat[carSubset$price_usd %in% lowPrice ] <- "lowPrice"
+carSubset$price_cat[carSubset$price_usd %in% medPrice ] <- "medPrice"
+carSubset$price_cat[carSubset$price_usd %in% highPrice ] <- "highPrice"
+carSubset$price_cat[carSubset$price_usd %in% extraPrice ] <- "extraPrice"
+
+```
+
+На исти начин ћемо приступити променљивој која представља годину производње.
+Категорије су одређене према стандардима Европске Уније.
+```{r}
+veryOldCar <- carSubset$year_produced[carSubset$year_produced <= 1980]
+oldCar <- carSubset$year_produced[carSubset$year_produced > 1980 & carSubset$year_produced <= 2000 ]
+medAgeCar <- carSubset$year_produced[carSubset$year_produced > 2000 & carSubset$year_produced <= 2012]
+newCar <- carSubset$year_produced[carSubset$year_produced > 2012]
+
+
+carSubset$year_produced_cat <- vector(mode = "character", length = nrow(carSubset))
+carSubset$year_produced_cat[carSubset$year_produced %in% veryOldCar ] <- "veryOldCar"
+carSubset$year_produced_cat[carSubset$year_produced %in% oldCar ] <- "oldCar"
+carSubset$year_produced_cat[carSubset$year_produced %in% medAgeCar ] <- "medAgeCar"
+carSubset$year_produced_cat[carSubset$year_produced %in% newCar ] <- "newCar"
+
+
+```
+
+Ради лакше и тачније обраде податаке стринг варијабле ћемо факторизовати.
+```{r}
+carSubset = as.data.frame(unclass(carSubset),stringsAsFactors=TRUE)
+```
+```{r}
+str(carSubset)
+```
+
+```{r}
+ggplot(data =carSubset) + geom_bin2d( mapping = aes(x = year_produced_cat, y = price_cat)) + labs(title ="Cena prema godini proizvodnje", x="Godina proizvodnje", y="Cena u USD")
+```
+\Из приложеног графика закључујемо да цена у великој мери зависи од године производње, што доказује чињеница да у категорији највиших цена не постоје стара и веома стара возила, као и то да у категорији најнижих цена не постоје нова возила.\
+У свим категоријама су најмање заступљена стара возила, а разлог је то што их има најмање од свих.
+Такође видимо зависност категорија, где је средња старост возила најзаступљенија у рангу средњих цена.
+Та зависност је изражена повезаношћу ниских и екстра ниских цена са старим возилима, као и високих и екстра високих са новим возилима.
+Тиме долазимо до закључка да је ова повезаност очекивана.
+
+```{r}
+ggplot(data= carSubset) + geom_bar(mapping=aes(x=body_type))+scale_x_discrete(guide = guide_axis(n.dodge=3))+ labs(title ="Brojnost vozila prema tipu", x="Tip vozila", y="Broj vozila")
+
+```
+\Можемо закључити да су највише заступљена возила седан и хечбек, док су најмање заступљени лимузина, кабриолет и пикап.
+
+Пошто се на фрафику не види категорија лимузине, додаћемо табеларни приказ који ће приказати бројност свих категорија.
+
+```{r}
+table(carSubset$body_type)
+```
+
+```{r}
+ggplot(data=carSubset) + geom_bar(mapping=aes(x = drivetrain, fill = transmission)) + labs(title ="Odnos pogona i transmisije", x="Pogon", y="Broj vozila") + scale_fill_discrete(name="Tip transmisije", labels=c("Automatik", "Manuelni"))
+```
+\ Примећујемо да код погона на сва четири точка имамо већу заступљеност аутоматске трансмисије, док код остала два типа преовлађује мануелни.
+
+```{r}
+ggplot(carSubset) +
+  geom_bar(aes(x=drivetrain, fill=transmission),
+           position = "dodge") +
+  facet_wrap(~price_cat) + labs(x = "Pogon", y="Broj", title="Pogon vozila i transmisija za svaku kategoriju cene") +scale_fill_discrete(name="Transmisija", labels=c("Automatski", "Manuelni"))
+```
+\ Видимо да су код возила са вишим ценама у свакој категорији погона заступљенији аутоматски мењачи, док су код возила са нижим ценама у свакој категорији погона заступљенији мануелни мењачи.
+Код категорије medPrice трансмисија у већој мери зависи од погона.
+\ Такође видимо да међу возилима са нижим ценама доминирају она на предњи погон.
+
+```{r}
+ggplot(data=carSubset) + geom_boxplot(mapping=aes(x = reorder(price_cat,engine_capacity), y = engine_capacity))+labs(title ="Odnos cene i kubikaze", x="Cena", y="Kubikaza")
+```
+\На основу графика видимо да возила са већом ценом, у просеку имају већу кубикажу.\
+Такође видимо да у свакој категорији имамо одступања, што значи да ова зависност није једнозначна већ зависи и од неких других параметара.
+
+
+```{r}
+ggplot(data =carSubset) + geom_boxplot(mapping=aes(x=reorder(price_cat,odometer_value), y=odometer_value)) +labs(title ="Cena vozila u odnosu na predjenu kilometrazu", x="Predjenih kilometara", y="Cena u USD")
+```
+
+Видимо да је цена возила нижа са порастом пређених километара, што је и очекивано.
+Одступања која видимо на претходним графицима, могу бити последица зависности цене од променљивих попут 
+стања возила, марке возила, поседовања гаранције...
+У даљем истраживању покушаћемо да испитамо ту зависност.
+
+```{r}
+ggplot(data=carSubset) + geom_boxplot(aes(x= state, y=price_usd)) + labs(title ="Cena u odnosu na stanje vozila",x="Stanje vozila", y= "Cena vozila")
+```
+\Постоји јака веза између ова два атрибута, где цена у великој мери зависи од стања возила.\
+Видимо да највећу цену имају нова возила, за њом следе половна затим оштећена возила која имају доста ниже цене од друге две категорије.\
+У колони половна возила, видимо да постоје цене које су доста високе, па ћемо разлоге истражити у наредним графицима.
+
+```{r}
+
+plotCar <-carSubset %>% group_by(manufacturer_name) %>% filter(n() > 1400)
+
+ggplot(data = plotCar) +
+  geom_count(mapping = aes(x = manufacturer_name, y = price_cat)) + labs(x ="Proizvodjac", y="Cena", title="Odnos cene i marke vozila ") +   scale_x_discrete(guide = guide_axis(n.dodge=2))
+```
+\Пошто у скупу имамо превелик број произвођача, изабрали смо само оне који доминирају по бројности односно имају више од 1400 возила.\
+У категорији највиших цена доминирају БМВ и Мерцедес-Бенц за којима следе Ауди, Форд, Волксваген и Рено.
+Цитроен, Пежо и Опел немају возила са екстра великим ценама.\
+Такође, видимо да ови произвођачи имају велики број возила и у категоријама са ниским ценама.
+Самим тим, одступања у претходним графицима могу бити последица зависности цена од произвођача.
+
+
+
+```{r}
+plotCar2 <-carSubset %>% group_by(manufacturer_name) %>% filter( between(n(),400,1400))
+ggplot(data = plotCar2) +
+  geom_count(mapping = aes(x = manufacturer_name, y = price_cat)) + labs(x ="Proizvodjac", y="Cena", title="Odnos cene i marke vozila 2") +   scale_x_discrete(guide = guide_axis(n.dodge=3))
+
+```
+
+```{r}
+plotCar3 <-carSubset %>% group_by(manufacturer_name) %>% filter( between(n(),100,400))
+ggplot(data = plotCar3) +
+  geom_count(mapping = aes(x = manufacturer_name, y = price_cat)) + labs(x ="Proizvodjac", y="Cena", title="Odnos cene i marke vozila3 ") +   scale_x_discrete(guide = guide_axis(n.dodge=3))
+
+```
+\Са графика 2 и 3, где су приказани мање заступљени модели уочавамо да су то углавном возила са нижим ценама, уз мала одступања за новије или луксузне моделе.
+
+ 
+
+```{r}
+ ggplot(carSubset, aes(state, fill=has_warranty )) + geom_bar(position = position_fill()) + labs(x = "Stanje vozila", y="Procenat", title="Procenat vozila sa garancijom za svako stanje") +scale_fill_discrete(name="Ima garanciju?", labels=c("NE", "DA"))
+```
+\Са графика може јасно да се види да гаранцију углавном имају нова возила, чак око 80%, код половних возила тај проценат је веома мали, док док оштећених возила уопште немамо осигурање.
+
+
+```{r}
+ggplot(carSubset) + geom_boxplot(aes(x=has_warranty, y= price_usd)) + labs(x = "Garancija", y="Cena", title="Cena vozila prema posedovanju garancije")
+```
+Као што смо и раније могли да закључимо, возила са гаранцијом имају вишу цену из следећих разлога које смо приказали на претходним графицима.
+Тачније нова возила чешће имају гаранцију, самим тим имају и вишу цену.
+
+
+Моделовање
+
+Формулација тренинг и тест скупа
+
+Скуп података ћемо поделити на тренинг и тест подскуп, у односу 80 према 20.
+```{r}
+set.seed(1)
+size=floor(0.8*nrow(carSubset))
+train_ind = sample(seq_len(nrow(carSubset)), size=size)
+
+train = carSubset[train_ind,]
+str(train)
+
+
+```
+
+```{r}
+test = carSubset[-train_ind,]
+str(test)
+```
+```{r}
+
+corr = cor(carSubset[, sapply(carSubset,is.numeric)], use="complete.obs", method="pearson")
+
+corr
+```
+
+
+Помоћу функције cor представљена је табела корелације нумеричких променљивих из скупа података.
+Из ове табеле видимо да најбољи међусобни однос имају колоне price_usd и year_produced, што значи да цену најбоље одређује година производње возила.
+
+Линеарна регресија
+
+\У даљем истраживању направићемо модел линеарне регресије, и тиме испитати који атрибути најбоље одређују цену.
+
+```{r}
+lm1 = lm(price_usd ~ year_produced + I(year_produced^2)  , data=train)
+summary(lm1)
+```
+```{r}
+plot(train$year_produced, train$price_usd)
+abline(lm1, col="red")
+
+ggplot(train,aes(x=year_produced, y=price_usd) ) + geom_point() + stat_smooth(method = lm, formula=y~poly(x,5, raw=TRUE), size=2,col="red") 
+```
+
+```{r}
+regFit = regsubsets(price_usd ~ odometer_value + year_produced + state +  engine_capacity + drivetrain + number_of_photos, data =train, nvmax=5, really.big = T)
+summary(regFit)
+```
+
+```{r}
+lm2 = lm(price_usd ~ year_produced + I(year_produced^2) + I(year_produced^3) * drivetrain + state + engine_capacity + I(engine_capacity^2) + sqrt(number_of_photos), data = train)
+summary(lm2)
+```
+
+```{r}
+par(mfrow=c(2, 2))
+plot(lm2)
+```
+
+
+```{r}
+lm3 = lm(log(price_usd) ~ year_produced + I(year_produced^2) + I(year_produced^3) * drivetrain + state + engine_capacity + I(engine_capacity^2) + sqrt(number_of_photos), data = train)
+
+summary(lm3)
+```
+```{r}
+pred1 = predict(lm3,test,interval="confidence")
+par(mfrow=c(2, 2))
+plot(lm3)
+```
+
+\Проблем смо решили трансформацијом излазне вредности модела линеарне регресије помоћу логаритамске функције и тако добили боље статистичке податке, такође тиме смо решили и проблем левкастог облика графа. 
+
+Normal Q-Q граф је доказ да резидуали у великој нормално дистрибуирају, с обзиром да прате испрекидану линију.
+
+Scale-Location је показатељ добре хомогености варијансе резидуала јер запажамо да су подаци подједнако удаљени од хоризонталне линије.
+
+Residuals vs Leverage je график на основу ког увиђамо да постоје „high-leverage“ вредности.
+
+Из приложених података о линеарној регресији, закључује се да цене доста варирају. На пример, mean за цену је 6640, а модел греши за око 3000. Дакле, модел линеарне регресије, није најбоље решење за предикцију.
+
+
+
+```{r}
+plot(hatvalues(lm3))
+```
+```{r}
+num1 <- which.max(hatvalues(lm3))
+
+str(num1)
+```
+
+
+Стабло одлучивања модел машинског учења
+
+```{r}
+library(e1071)
+library(rattle)
+library(rpart)
+library(caret)
+library(rpart.plot)
+tree_model = rpart(price_cat ~ .,data=subset(train, select=c( -price_usd,-manufacturer_name, - duration_listed ,-color, -number_of_photos) ),method = "class")
+
+
+fancyRpartPlot(tree_model, cex=0.5)
+
+```
+
+```{r}
+printcp(tree_model)
+```
+####Objasni print
+
+```{r}
+tree_model$variable.importance
+```
+###Objasniti vaznost modela
+
+```{r}
+
+predTree <- predict(tree_model, test, type="class")
+
+
+confMatrix <- table(predTree, test$has_warranty)
+##fourfoldplot(confMatrix, color = c("#CC6666", "#99CC99"),
+           ### conf.level = 0, margin = 1, main = "Confusion Matrix of Decision tree")
+cnfPT2 <- table(predTree, test$price_cat, dnn=c("Prediction", "Actual")) 
+
+require(caret)
+cnf1 <- confusionMatrix(predTree,test$price_cat)
+plt <- as.data.frame(cnf1$table)
+
+ confusionMatrix(predTree,test$price_cat)
+```
+
+
+
+```{r}
+ggplot(plt, aes(Prediction,Reference, fill= Freq)) +
+        geom_tile() + geom_text(aes(label=Freq)) +
+        scale_fill_gradient(low="white", high="#009194") +
+        labs(x = "Prediktovani",y = "Stvarni") +
+        scale_x_discrete(labels=c("extraLowPrice","extraPrice","highPrice","lowPrice","medPrice")) +
+        scale_y_discrete(labels=c("extraLowPrice","extraPrice","highPrice","lowPrice","medPrice"))
+
+
+```
+
+
+```{r}
+
+predAct = data.frame(cbind(actual=test$price_cat, predicted=predTree))
+predAct[1:100,]
+
+```
+
+
+Метрике
+
+Прецизност
+```{r}
+
+(precision <- diag(cnfPT2) / sum(cnfPT2))
+
+
+```
+
+Одзив
+```{r}
+(recall <- (diag(cnfPT2) / colSums(cnfPT2)))
+
+```
+Ф1 Скор
+```{r}
+(F1 <- 2*precision*recall/(precision+recall))
+```
+
+
+SUPPORT VECTOR MACHINE ALGORITAM MASINSKOG UCENJA
+
+```{r}
+  
+svm1 <- svm(price_cat ~ ., data = subset(train, select = c(-price_usd, 
+    -manufacturer_name, -duration_listed, -color, -number_of_photos)), method = "C-classification", kernel ="radial",gamma= 0.1,cost =10)
+
+
+
+
+```
+
+
+```{r}
+predSVM <- predict(svm1,test)
+
+cnfSVM <- confusionMatrix(predSVM,test$price_cat)
+plt <- as.data.frame(cnfSVM$table)
+cnfSVM2 <- table(predSVM, test$price_cat, dnn=c("Prediction", "Actual"))  
+ 
+confusionMatrix(predSVM,test$price_cat)
+
+ 
+
+ 
+```
+
+
+```{r}
+ggplot(plt, aes(Prediction,Reference, fill= Freq)) +
+        geom_tile() + geom_text(aes(label=Freq)) +
+        scale_fill_gradient(low="white", high="#009194") +
+        labs(x = "Prediktovani",y = "Stvarni") +
+        scale_x_discrete(labels=c("extraLowPrice","extraPrice","highPrice","lowPrice","medPrice")) +
+        scale_y_discrete(labels=c("extraLowPrice","extraPrice","highPrice","lowPrice","medPrice"))
+
+
+```
+```{r}
+predAct1 = data.frame(cbind(actual=test$price_cat, predicted=predSVM))
+predAct1[1:100,]
+```
+
+
+Метрике
+
+Прецизност
+```{r}
+
+(precision <- diag(cnfSVM2) / sum(cnfSVM2))
+
+
+```
+
+Одзив
+```{r}
+(recall <- (diag(cnfSVM2) / colSums(cnfSVM2)))
+
+```
+Ф1 Скор
+```{r}
+(F1 <- 2*precision*recall/(precision+recall))
+```
+
+
+На основу статистичких вредности закључујемо да алгоритам SVM даје боље резултате.
+Тако да ће он бити изабран за предиктовање цене аутомобила.
+
+
+
+
